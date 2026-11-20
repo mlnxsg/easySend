@@ -1,0 +1,15 @@
+{
+  "name": "esend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "手机截屏 → 电脑白板",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  }
+}

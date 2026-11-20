@@ -1,0 +1,650 @@
+/* eSend 白板 — Organic 设计系统 / 方向 1a「纸板」
+   奶油底 + 陶土主色 + 鼠尾草辅色。深浅两套。 */
+
+:root {
+  --bg:      #f5ead8;   /* 画布底 */
+  --surface: #ebddc5;   /* 胶囊、pod、文字卡 */
+  --text:    #201e1d;
+  --accent:  #c67139;   /* 陶土：主色、选中描边、复制按钮 */
+  --accent-2:#7a8a5e;   /* 鼠尾草：连接状态点、点阵 */
+  --divider: color-mix(in srgb, #201e1d 16%, transparent);
+
+  --neutral-100: #f9f4ed;
+  --neutral-200: #eee7db;
+  --neutral-300: #dcd3c4;
+  --neutral-500: #a19786;
+  --neutral-700: #645c50;
+  --neutral-800: #474238;
+  --neutral-900: #2e2b25;
+  --accent-300:  #ffc6a5;
+  --accent-400:  #f6a06b;
+  --accent-700:  #8c491a;
+  --accent-2-300:#ccdbb2;
+  --accent-2-400:#aebf92;
+
+  /* 语义色：深浅两套各自指向不同的色阶 */
+  --muted:      var(--neutral-700);  /* 次要文字，14px 以上 */
+  /* 脚注色在浅底上不能用 neutral-500（#a19786 只有 2.42:1，实测不可读）。
+     handoff 里那个值是从深色画板量的，深浅两套必须各给各的。 */
+  --muted-soft: var(--neutral-700);
+  --danger:     var(--accent-700);   /* 破坏性操作 */
+  --icon:       var(--neutral-800);
+  --dot-idle:   var(--neutral-500);
+  --grid-dot:   color-mix(in srgb, #7a8a5e 42%, transparent);
+  --knob:       #f5ead8;
+
+  --radius-card: 20px;
+  --radius-note: 22px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px   color-mix(in srgb, #2e2b25 14%, transparent);
+  --shadow-md: 0 3px 10px  color-mix(in srgb, #2e2b25 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2e2b25 22%, transparent);
+
+  /* 字体：全部走系统字，不引入任何 webfont。
+     eSend 是局域网工具，从公网拉字体和它的定位冲突；而且 Google Fonts 在国内不通，
+     中文字族自托管又要几十 MB，和「无构建步骤、约 1MB」的定位不成立。 */
+  --font-body: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  /* 字标：没有 Caprasimo 就用重量最足的系统字撑住，别退到细体 */
+  --font-display: "Caprasimo", Georgia, "Times New Roman", serif;
+  /* 中文标题：装了思源宋体/宋体-简就用，否则退到系统 UI 字而不是 SimSun
+     （Windows 的 serif 会给到 SimSun，25px 加粗下观感偏旧） */
+  --font-heading: "Source Han Serif SC", "Noto Serif SC", "Songti SC",
+                  "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:      #2e2b25;
+    --surface: #474238;
+    --text:    #f9f4ed;
+    --accent:  #f6a06b;   /* 深底上主色往亮走一档 */
+    --accent-2:#ccdbb2;
+    --divider: color-mix(in srgb, #f9f4ed 18%, transparent);
+
+    /* 对比度红线：深底上 13px 以下不能用 #645c50（2.14:1，实测不可读） */
+    --muted:      #c0b6a5;
+    --muted-soft: #a19786;
+    --danger:     #ffc6a5;
+    --icon:       #dcd3c4;
+    --dot-idle:   #a19786;
+    --grid-dot:   color-mix(in srgb, #aebf92 24%, transparent);
+    --knob:       #2e2b25;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* #empty 是 grid、#actions 是 flex，作者的 display 会盖过 UA 的 [hidden] 规则，
+   必须显式声明，否则 el.hidden = true 藏不住它们。 */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* ---------------------------------------------------------------- 画布 */
+
+#viewport {
+  position: fixed;
+  inset: 0;
+  cursor: grab;
+  background-image: radial-gradient(circle, var(--grid-dot) 1.6px, transparent 1.6px);
+  background-repeat: repeat;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+#viewport.panning { cursor: grabbing; }
+
+#world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* ---------------------------------------------------------------- 卡片 */
+
+.item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 360px;
+  transform-origin: 0 0;
+}
+
+/* 裁切层：圆角、阴影、选中描边都在这层，操作胶囊挂在外层才不会被裁掉 */
+.item-clip {
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  outline: 2px solid transparent;
+  outline-offset: 4px;
+  transition: outline-color .12s;
+}
+.item.selected .item-clip { outline-color: var(--accent); }
+.item.dragging .item-clip {
+  box-shadow: 0 20px 48px color-mix(in srgb, #2e2b25 30%, transparent);
+}
+
+.item img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+@keyframes esLand {
+  from { outline-color: var(--accent); transform: scale(.985); }
+  to   { outline-color: transparent;   transform: none; }
+}
+.item.fresh .item-clip { animation: esLand .9s cubic-bezier(.2, .8, .2, 1); }
+
+/* 文字卡：比截图卡轻一档阴影，像贴在板上的便签 */
+.item.kind-text .item-clip {
+  border-radius: var(--radius-note);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.item.kind-text.editing .item-clip { outline-color: var(--accent); }
+
+.text-body,
+.text-edit {
+  display: block;
+  width: 100%;
+  max-height: 500px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px;
+  /* handoff 写的是 14px，但截图里手机的正文缩到板上也有 15px 左右，
+     14px 的便签反而比截图里的字还小，缩小画布后就看不清了 */
+  font: 18px/1.6 var(--font-body);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.text-body:empty::before { content: "空白"; color: var(--muted-soft); }
+.text-edit {
+  border: 0;
+  outline: none;
+  resize: none;
+  min-height: 65px; /* 一行字的高度（18×1.6 + 上下 18），进编辑时卡片不跳 */
+  background: transparent;
+  font-family: inherit;
+  caret-color: var(--accent);
+}
+
+/* 拉过下边沿 = 定高：框就这么高，字多了在框里滚 */
+.item.fixed-h .item-clip { height: var(--h); }
+.item.fixed-h .text-body,
+.item.fixed-h .text-edit {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+/* ---- 拉伸手柄 ----
+   手柄骑在选中描边上（描边在卡片外 4–6px）。尺寸除掉画布缩放和卡片自身 scale，
+   始终是屏幕上的固定大小，缩得再小也抓得住。 */
+
+.item-resize {
+  --k: calc(var(--inv-zoom, 1) / var(--item-scale, 1));
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .14s;
+}
+.item:hover .item-resize,
+.item.selected .item-resize,
+.item.resizing .item-resize {
+  opacity: 1;
+  pointer-events: auto;
+}
+.read-only .item-resize { display: none; }
+
+.item-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+
+/* 感应区往卡片里伸 7px、往外伸 11px，比肉眼看到的握条宽得多，好抓；
+   握条本身贴着感应区外侧 4px 画，正好压在描边中线（卡片外 5px）上 */
+.rz-e {
+  top: 0;
+  bottom: 0;
+  right: calc(-11px * var(--k));
+  width: calc(18px * var(--k));
+  cursor: ew-resize;
+}
+.rz-e::after {
+  inset: 0 calc(4px * var(--k)) 0 auto;
+  width: calc(4px * var(--k));
+  height: calc(28px * var(--k));
+}
+
+.rz-s {
+  left: 0;
+  right: 0;
+  bottom: calc(-11px * var(--k));
+  height: calc(18px * var(--k));
+  cursor: ns-resize;
+}
+.rz-s::after {
+  inset: auto 0 calc(4px * var(--k)) 0;
+  width: calc(28px * var(--k));
+  height: calc(4px * var(--k));
+}
+
+.rz-se {
+  right: calc(-15px * var(--k));
+  bottom: calc(-15px * var(--k));
+  width: calc(20px * var(--k));
+  height: calc(20px * var(--k));
+  cursor: nwse-resize;
+}
+.rz-se::after {
+  width: calc(11px * var(--k));
+  height: calc(11px * var(--k));
+  background: var(--surface);
+  border: calc(2px * var(--k)) solid var(--accent);
+}
+
+/* ---- 卡片右上角浮出的操作胶囊 ---- */
+
+.item-actions {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #2e2b25 78%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition: opacity .14s, transform .14s;
+}
+.item:hover .item-actions,
+.item.selected .item-actions {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.item-actions button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--neutral-200);
+  cursor: pointer;
+  transition: background .12s;
+}
+.item-actions button:hover { background: color-mix(in srgb, #f9f4ed 16%, transparent); }
+.item-actions .act-copy { background: var(--accent); color: var(--neutral-100); }
+.item-actions .act-copy:hover { background: var(--accent-400); }
+.item-actions .act-delete { color: var(--accent-300); }
+
+/* 文字卡的字从顶上 18px 开始，胶囊压在上边沿，只占内边距不挡字；
+   和卡片有重叠，鼠标从卡片移上去不会断 hover */
+.item.kind-text .item-actions { top: -22px; }
+/* 编辑时胶囊没用，还挡光标所在的那行，直接收起 */
+.item.editing .item-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- 卡片下方的时间/尺寸 ---- */
+
+.item-meta {
+  position: absolute;
+  left: 4px;
+  bottom: -26px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* 缩得太小时一堆文字会糊在一起，class 由 applyView 挂在 #world 上 */
+#world.zoom-tiny .item-meta { display: none; }
+
+/* ---------------------------------------------------------------- 界面外壳 */
+
+#identity,
+#actions,
+#viewpod,
+#readonly,
+#selbar {
+  position: fixed;
+  z-index: 10;
+}
+
+/* ---- 左上：身份 ---- */
+
+#identity {
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 18px 9px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot-idle);
+  flex: none;
+}
+@keyframes esBreathe { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
+#identity[data-status="on"]  .status-dot { background: var(--accent-2); animation: esBreathe 2.8s ease-in-out infinite; }
+#identity[data-status="off"] .status-dot { background: var(--danger); }
+
+.wordmark {
+  font: 400 17px/1 var(--font-display);
+  letter-spacing: .01em;
+  color: var(--text);
+}
+.vrule { width: 1px; height: 16px; background: var(--divider); flex: none; }
+#status { font-size: 12.5px; color: var(--muted); }
+
+/* ---- 右上：操作簇 ---- */
+
+#actions {
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 自制开关：原生 checkbox 是「土味」的主要来源，视觉隐藏但保留无障碍 */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch .track {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+  flex: none;
+  transition: background .16s ease;
+}
+.switch .knob {
+  position: absolute;
+  top: 2.5px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--knob);
+  transition: left .16s ease;
+}
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track .knob { left: 15px; }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--icon);
+  cursor: pointer;
+  transition: background .12s;
+}
+.icon-btn:hover  { background: color-mix(in srgb, var(--text) 7%, var(--surface)); }
+.icon-btn:active { background: color-mix(in srgb, var(--text) 14%, var(--surface)); }
+.icon-btn.danger { color: var(--danger); }
+.icon-btn.danger:hover { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+.icon-btn:disabled:hover { background: var(--surface); }
+
+/* ---- 右下：视图 pod ---- */
+
+#viewpod {
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.pod-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--icon);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.pod-btn:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.pod-btn input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pod-btn.toggle:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--danger);
+}
+.pod-btn:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+#viewpod .vrule { height: 18px; margin: 0 4px; }
+#zoom-pct {
+  padding: 0 10px 0 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 只读横幅 ---- */
+
+#readonly {
+  top: 76px;                 /* 避开身份胶囊 */
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 18px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--danger);
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+}
+
+/* ---- 框选选框 ---- */
+
+#marquee {
+  position: fixed;
+  z-index: 6;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
+}
+
+/* ---- 底部中间：多选工具条 ---- */
+
+#selbar {
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+#sel-count {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#selbar .vrule { margin: 0 2px; }
+.sel-btn {
+  border: 0;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--icon);
+  font: 13px/1 var(--font-body);
+  cursor: pointer;
+  transition: background .12s;
+}
+.sel-btn:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.sel-btn.primary { background: var(--accent); color: var(--neutral-100); }
+.sel-btn.primary:hover { background: var(--accent-400); }
+.sel-btn.danger { color: var(--danger); }
+.sel-btn.danger:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ---- 左下提示 ---- */
+
+#hint {
+  position: fixed;
+  bottom: 26px;
+  left: 28px;
+  z-index: 5;
+  font-size: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* ---- Toast ---- */
+
+@keyframes esToast {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+#toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 10px 20px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-900);
+  color: var(--neutral-100);
+  border: 0;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  animation: esToast .18s ease-out;
+}
+#toast.err { background: var(--accent-700); color: var(--neutral-100); }
+/* 多选工具条在底部中间，toast 得让开，别压在按钮上 */
+body:has(#selbar:not([hidden])) #toast { bottom: 96px; }
+
+/* ---- 空状态 ---- */
+
+#empty {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 4;
+}
+.empty-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  max-width: 620px;
+}
+.empty-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+.empty-text h1 {
+  margin: 4px 0 10px;
+  font: 700 25px/1.3 var(--font-heading);
+  color: var(--text);
+}
+.empty-text p {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+.empty-text .empty-foot {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--muted-soft);
+}
+.empty-text code {
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font: 12px var(--font-mono);
+  color: var(--muted);
+}
+
+/* ---- 窄窗口：右上操作簇让出文字，只留图标 ---- */
+
+@media (max-width: 720px) {
+  .switch { padding: 9px 12px; font-size: 0; gap: 0; }
+  #hint { display: none; }
+  #selbar { padding-left: 12px; }
+  .sel-btn { padding: 7px 11px; }
+}

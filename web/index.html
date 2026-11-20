@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eSend 白板</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%23c67139'/><text x='16' y='23' font-size='20' font-family='Georgia,serif' font-weight='700' fill='%23f9f4ed' text-anchor='middle'>e</text></svg>">
+<link rel="stylesheet" href="/board.css">
+</head>
+<body>
+
+<div id="viewport">
+  <div id="world"></div>
+</div>
+
+<!-- 框选时拉出来的选框 -->
+<div id="marquee" hidden></div>
+
+<div id="empty" hidden>
+  <div class="empty-card">
+    <div class="empty-icon">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9.5" r="1.6"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+    </div>
+    <div class="empty-text">
+      <h1>白板还是空的</h1>
+      <p>在 iPhone 上截屏，然后双击手机背面，图片会出现在这里。<br>双击空白处可以直接写文字。</p>
+      <p class="empty-foot">还没配置好？看 项目 README 的「iPhone 配置」</p>
+    </div>
+  </div>
+</div>
+
+<!-- 左上：身份 -->
+<div id="identity">
+  <span class="status-dot" aria-hidden="true"></span>
+  <span class="wordmark">eSend</span>
+  <span class="vrule" aria-hidden="true"></span>
+  <span id="status">连接中…</span>
+</div>
+
+<!-- 右上：会丢东西的操作 -->
+<div id="actions">
+  <label class="switch" title="每次重新打开网页时，自动清空白板（图片原文件不删，仍在 data/images/）">
+    <input type="checkbox" id="auto-clear">
+    <span class="track" aria-hidden="true"><span class="knob"></span></span>
+    打开时清空
+  </label>
+  <button class="icon-btn" id="btn-folder" title="在资源管理器里打开 data/images" aria-label="打开文件夹">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+  </button>
+  <button class="icon-btn danger" id="btn-clear" title="清空白板（图片原文件保留在硬盘上）" aria-label="清空白板">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+  </button>
+</div>
+
+<!-- 右下：视图控制 -->
+<div id="viewpod">
+  <button class="pod-btn" id="btn-fit" title="适应全部  F" aria-label="适应全部">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="pod-btn" id="btn-reset" title="复位  0" aria-label="复位视图">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+  </button>
+  <label class="pod-btn toggle" id="follow-btn" title="自动跟随新图">
+    <input type="checkbox" id="follow" checked>
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/></svg>
+  </label>
+  <span class="vrule" aria-hidden="true"></span>
+  <span id="zoom-pct">100%</span>
+</div>
+
+<div id="readonly" hidden>
+  只读模式 —— 请在电脑上用 <b>http://localhost</b> 打开，才能拖拽和复制图片。
+</div>
+
+<!-- 底部中间：多选时才出现 -->
+<div id="selbar" hidden>
+  <span id="sel-count">已选 0 项</span>
+  <span class="vrule" aria-hidden="true"></span>
+  <button class="sel-btn primary" id="btn-sel-copy" title="拼成一张图复制  Ctrl+C">复制</button>
+  <button class="sel-btn danger" id="btn-sel-delete" title="删除选中项  Delete">删除</button>
+  <button class="sel-btn" id="btn-sel-clear" title="取消选中  Esc">取消</button>
+</div>
+
+<div id="hint">滚轮缩放 · 拖空白处平移 · 右键拖动框选 · Ctrl／⇧ 点选多张 · 双击图片复制 · 双击空白处写字 · Ctrl+Z 撤销</div>
+<div id="toast" hidden></div>
+
+<script type="module" src="/board.js"></script>
+</body>
+</html>
